@@ -34,6 +34,7 @@ try:
 except:
     has_poster_lib = False
 import psycopg2
+import modules.config
 import osmose_config as config
 import inspect
 import fileinput
@@ -519,6 +520,19 @@ def run_osmosis_change(conf, logger):
 
 ###########################################################################
 
+
+def run_osmosis_resume(conf, logger, tstamp):
+    logger.log(logger.log_av_r+"import osmosis resume post scripts"+logger.log_ap)
+    set_pgsql_schema(conf, logger)
+    for script in conf.osmosis_resume_init_post_scripts:
+        cmd  = ["psql"]
+        cmd += conf.db_psql_args
+        cmd += ["-f", script]
+        logger.execute_out(cmd)
+
+
+###########################################################################
+
 def run(conf, logger, options):
 
     err_code = 0
@@ -607,6 +621,9 @@ def run(conf, logger, options):
             cmd += ["-f", script]
             logger.execute_out(cmd)
 
+    if options.resume:
+        run_osmosis_resume(conf, logger)
+
     ##########################################################################
     ## analyses
 
@@ -647,6 +664,7 @@ def run(conf, logger, options):
 
             lunched_analyser = []
             lunched_analyser_change = []
+            lunched_analyser_resume = []
 
             for name, obj in inspect.getmembers(analysers["analyser_" + analyser]):
                 if (inspect.isclass(obj) and obj.__module__ == "analyser_" + analyser and
@@ -658,6 +676,21 @@ def run(conf, logger, options):
                     analyser_conf.version = version
                     analyser_conf.verbose = options.verbose
                     with obj(analyser_conf, logger.sub()) as analyser_obj:
+                        if options.resume:
+                            try:
+                                body = urllib2.urlopen(modules.config.url_frontend_update + "/../../control/status/%s/%s" % (country, analyser)).read().split("\n")
+                                if body[0] == 'NOTHING':
+                                    raise Exception("Nothing to resume")
+                                resume_from_timestamp, resume_from_version, nodes, ways, relations = body[0:5]
+                                already_issued_objects = {'N': nodes and map(int, nodes.split(',')) or [], 'W': ways and map(int, ways.split(',')) or [], 'R': relations and map(int, relations.split(',') or [])}
+                                analyser_obj.analyser_resume(resume_from_timestamp, already_issued_objects)
+                                lunched_analyser_resume.append(analyser_obj)
+                                continue
+                            except BaseException as e:
+                                logger.sub().log("resume fail")
+                                traceback.print_exc()
+                                pass
+
                         if not options.change or not xml_change:
                             analyser_obj.analyser()
                             lunched_analyser.append(analyser_obj)
@@ -735,6 +768,9 @@ def run(conf, logger, options):
                 for obj in lunched_analyser_change:
                     with obj as o:
                         o.analyser_change_clean()
+                for obj in lunched_analyser_resume:
+                    with obj as o:
+                        o.analyser_resume_clean()
 
     ##########################################################################
     ## final cleaning
@@ -790,6 +826,9 @@ if __name__ == "__main__":
                       help="Run analyser on change mode when available")
     parser.add_option("--change_init", dest="change_init", action="store_true",
                       help="Initialize database for change mode")
+
+    parser.add_option("--resume", dest="resume", action="store_true",
+                      help="Run analyser on change mode by continuing from last run when available")
 
     parser.add_option("--skip-download", dest="skip_download", action="store_true",
                       help="Don't download extract")
