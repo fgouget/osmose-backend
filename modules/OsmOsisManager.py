@@ -44,6 +44,9 @@ class OsmOsisManager:
     self.db_psql_args = db_psql_args
     self.logger = logger
 
+    if not self.check_database():
+        raise
+
 
   def psql_c(self, sql):
     cmd  = ["psql"]
