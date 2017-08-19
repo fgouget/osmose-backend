@@ -100,6 +100,8 @@ class template_config:
     db_password = "-osmose-"
     db_host     = None        # Use socket by default
     db_schema   = None
+    db_schema_path = None
+    db_persistant = False
 
     def __init__(self, country, polygon_id=None, analyser_options=None, download_repo=GEOFABRIK):
         config[country] = self
@@ -114,6 +116,7 @@ class template_config:
             self.analyser_options = {}
 
         self.sql_post_scripts = []  # Scripts to run everytime, just before launching analysers
+        self.db_extension_check = []
 
     def init(self):
         if "diff" in self.download:
@@ -141,9 +144,9 @@ class default_simple(template_config):
     def __init__(self, country, polygon_id=None, analyser_options=None, download_url=None, download_repo=None):
 
         template_config.__init__(self, country, polygon_id, analyser_options, download_repo)
+        self.db_extension_check += ["fuzzystrmatch", "unaccent"]
         self.download = {
-            "url": download_url,
-            "osmosis": country
+            "url": download_url
         }
         self.analyser["sax"] = "xxx"
         self.analyser["osmosis_roundabout_reverse"] = "xxx"
@@ -316,6 +319,7 @@ default_country("merge", "france_taaf", 6063103,
 ###########################################################################
 
 france_local_db = template_config("france_local_db", 1403916, {"project": "openstreetmap", "country": "FR", "language": "fr", "proj": 2154})
+france_local_db.db_persistant = True
 france_local_db.db_base     = "osm"
 france_local_db.db_user     = "osmose"
 france_local_db.db_password = "clostAdtoi"
